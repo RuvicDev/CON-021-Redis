@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title data-i18n="doc_title">Conector Redis — Ruvic</title>
+  <link rel="stylesheet" href="assets/ruvic.css">
+</head>
+<body class="guide">
+  <main class="ruvic-container">
+
+    <nav class="ruvic-toc" aria-label="Índice">
+      <h2 data-i18n="toc_title">Contenido</h2>
+      <ol>
+        <li><a href="#que-es" data-i18n="toc.que_es">¿Qué es y para qué sirve?</a></li>
+        <li><a href="#prerrequisitos" data-i18n="toc.prerrequisitos">Prerrequisitos</a></li>
+        <li><a href="#configuracion-fabricante" data-i18n="toc.configuracion_fabricante">Configuración en el fabricante</a></li>
+        <li><a href="#permisos" data-i18n="toc.permisos">Permisos requeridos</a></li>
+        <li><a href="#configuracion-ruvic" data-i18n="toc.configuracion_ruvic">Configuración en Ruvic</a></li>
+        <li><a href="#verificacion" data-i18n="toc.verificacion">Verificación</a></li>
+        <li><a href="#solucion-problemas" data-i18n="toc.solucion_problemas">Solución de problemas</a></li>
+        <li><a href="#faq-seguridad" data-i18n="toc.faq_seguridad">Preguntas frecuentes y notas de seguridad</a></li>
+      </ol>
+    </nav>
+
+    <h1 data-i18n="guide_title">Redis</h1>
+    <p class="guide-updated">{{ULTIMA_ACTUALIZACION}}</p>
+
+    <!-- ============ 1. QUÉ ES ============ -->
+    <section>
+      <h2 id="que-es" data-i18n="section.que_es">¿Qué es y para qué sirve?</h2>
+      <p data-i18n="que_es.body">El conector Redis permite que el agente de Ruvic lea y escriba claves en tu servidor Redis. A diferencia de los conectores de bases de datos del catálogo, <strong>este conector sí escribe</strong>. Una vez configurado, puedes pedirle al agente cosas como:</p>
+      <ul>
+        <li data-i18n="que_es.ej1">“¿Cuál es el valor guardado en la clave sesion:usuario_42?”</li>
+        <li data-i18n="que_es.ej2">“Guarda esta configuración en caché con el nombre config:tema, que expire en 1 hora.”</li>
+        <li data-i18n="que_es.ej3">“Lista todas las claves que empiezan con carrito: para ver cuántos carritos activos hay.”</li>
+      </ul>
+      <p data-i18n="que_es.ops">Operaciones soportadas:</p>
+      <table>
+        <thead>
+          <tr>
+            <th data-i18n="table.operacion">Operación</th>
+            <th data-i18n="table.que_hace">Qué hace</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>redis.read</code></td>
+            <td data-i18n="ops.read">Lee el valor y el tiempo de expiración (TTL) de una clave</td>
+          </tr>
+          <tr>
+            <td><code>redis.write</code></td>
+            <td data-i18n="ops.write">Escribe (o sobrescribe) una clave, con expiración opcional</td>
+          </tr>
+          <tr>
+            <td><code>redis.list_keys</code></td>
+            <td data-i18n="ops.list_keys">Lista las claves que cumplen un patrón, sin bloquear el servidor</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout callout-warning">
+        <span class="callout-title" data-i18n="que_es.callout.title">Este conector escribe</span>
+        <span data-i18n="que_es.callout.body">redis.write sobrescribe el valor de la clave indicada. Se recomienda restringir el acceso del usuario dedicado a un patrón de claves específico (ver sección 3) en vez de dar acceso a todo el servidor.</span>
+      </div>
+    </section>
+
+    <!-- ============ 2. PRERREQUISITOS ============ -->
+    <section>
+      <h2 id="prerrequisitos" data-i18n="section.prerrequisitos">Prerrequisitos</h2>
+      <ul>
+        <li data-i18n="prer.db">Un servidor <strong>Redis 6.0 o superior</strong> (para poder usar ACL con restricción por patrón de claves; versiones anteriores solo soportan contraseña compartida).</li>
+        <li data-i18n="prer.admin">Acceso administrativo al servidor (para crear el usuario ACL), solo durante la configuración inicial.</li>
+        <li data-i18n="prer.red"><strong>Acceso de red</strong> desde la plataforma Ruvic al servidor Redis (host y puerto alcanzables; regla de firewall o lista de IPs permitidas si aplica).</li>
+        <li data-i18n="prer.datos">Los datos de conexión: host y puerto (por defecto <code>6379</code>).</li>
+      </ul>
+    </section>
+
+    <!-- ============ 3. CONFIGURACIÓN EN EL FABRICANTE ============ -->
+    <section>
+      <h2 id="configuracion-fabricante" data-i18n="section.configuracion_fabricante">Configuración en el fabricante</h2>
+      <p data-i18n="fab.intro">Vas a crear un <strong>usuario ACL restringido a un patrón de claves</strong> para Ruvic. No uses la cuenta <code>default</code> ni compartas la contraseña maestra del servidor: un usuario dedicado limita el radio de acción del agente a solo las claves que le corresponden.</p>
+      <ol class="ruvic-steps">
+        <li>
+          <strong data-i18n="fab.p1.t">Conéctate al servidor como administrador.</strong>
+          <p data-i18n="fab.p1.b">Usa <code>redis-cli</code> con la contraseña maestra:</p>
+<pre><code>redis-cli -h TU_HOST -p 6379 -a TU_CONTRASEÑA_ADMIN</code></pre>
+        </li>
+        <li>
+          <strong data-i18n="fab.p2.t">Crea el usuario restringido para Ruvic.</strong>
+          <p data-i18n="fab.p2.b">Elige una contraseña fuerte (mínimo 16 caracteres, generada aleatoriamente) y guárdala: la usarás en el formulario de Ruvic (campo Contraseña). El ejemplo restringe el acceso a claves con el prefijo <code>ruvic:</code> — ajusta el patrón a tu convención de nombres:</p>
+<pre><code>ACL SETUSER ruvic_agent on >CAMBIA_ESTA_CONTRASEÑA ~ruvic:* +get +set +scan +ttl +ping</code></pre>
+          <div class="callout callout-info">
+            <span class="callout-title" data-i18n="fab.p2.note.title">Nota</span>
+            <span data-i18n="fab.p2.note.body">El patrón ~ruvic:* limita al usuario a claves que empiecen con "ruvic:". Los comandos +get +set +scan +ttl +ping son exactamente los que usa el conector; no se otorgan otros comandos.</span>
+          </div>
+        </li>
+        <li>
+          <strong data-i18n="fab.p3.t">Persiste la configuración ACL.</strong>
+          <p data-i18n="fab.p3.b">Si tu servidor usa un archivo <code>users.acl</code>, guarda los cambios para que sobrevivan a un reinicio:</p>
+<pre><code>ACL SAVE</code></pre>
+          <p data-i18n="fab.p3.alt">Si no tienes un archivo ACL configurado (<code>aclfile</code> en <code>redis.conf</code>), el usuario se pierde al reiniciar Redis; considera configurarlo para uso en producción.</p>
+        </li>
+        <li>
+          <strong data-i18n="fab.p4.t">Habilita el acceso de red desde Ruvic.</strong>
+          <p data-i18n="fab.p4.b">Si tu Redis restringe conexiones por IP (habitual en producción), permite la IP de la plataforma Ruvic:</p>
+          <ul>
+            <li data-i18n="fab.p4.li1"><strong>Servidor propio</strong>: regla de firewall del sistema operativo para el puerto <code>6379</code>, y verifica que <code>bind</code> en <code>redis.conf</code> permita conexiones remotas (no solo <code>127.0.0.1</code>).</li>
+            <li data-i18n="fab.p4.li2"><strong>Redis administrado (ElastiCache, Redis Cloud, etc.)</strong>: agrega la IP en el security group o en la lista de redes autorizadas de la consola del proveedor.</li>
+          </ul>
+          <div class="screenshot-placeholder" data-i18n="fab.p4.img">[ Captura: regla de firewall / security group con la IP de Ruvic — reemplazar por assets/img/redis-firewall.png ]</div>
+        </li>
+        <li>
+          <strong data-i18n="fab.p5.t">Verifica el usuario desde fuera del servidor.</strong>
+          <p data-i18n="fab.p5.b">Desde una máquina distinta al servidor (idealmente con salida de red similar a la de Ruvic):</p>
+<pre><code>redis-cli -h TU_HOST -p 6379 --user ruvic_agent -a TU_CONTRASEÑA PING</code></pre>
+          <p data-i18n="fab.p5.result">Si responde <code>PONG</code>, el fabricante quedó listo. Anota estos valores para la siguiente sección: host, puerto, usuario y contraseña.</p>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ============ 4. PERMISOS ============ -->
+    <section>
+      <h2 id="permisos" data-i18n="section.permisos">Permisos requeridos</h2>
+      <p data-i18n="perm.intro">Principio de mínimo privilegio: el usuario de Ruvic solo necesita estos comandos, y solo sobre el patrón de claves que le corresponde. No otorgues <code>+@all</code>, <code>+flushall</code>, <code>+flushdb</code> ni acceso sin restricción de claves (<code>~*</code>).</p>
+      <table>
+        <thead>
+          <tr>
+            <th data-i18n="table.permiso">Comando</th>
+            <th data-i18n="table.para_que">Para qué sirve</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>GET</code></td>
+            <td data-i18n="perm.get.body">Leer el valor de una clave (<code>redis.read</code>)</td>
+          </tr>
+          <tr>
+            <td><code>SET</code></td>
+            <td data-i18n="perm.set.body">Escribir una clave, con o sin expiración (<code>redis.write</code>)</td>
+          </tr>
+          <tr>
+            <td><code>SCAN</code></td>
+            <td data-i18n="perm.scan.body">Listar claves que cumplen un patrón sin bloquear el servidor (<code>redis.list_keys</code>)</td>
+          </tr>
+          <tr>
+            <td><code>TTL</code></td>
+            <td data-i18n="perm.ttl.body">Consultar el tiempo restante de expiración de una clave (parte de <code>redis.read</code>)</td>
+          </tr>
+          <tr>
+            <td><code>PING</code></td>
+            <td data-i18n="perm.ping.body">Verificar la conexión (botón "Probar conexión")</td>
+          </tr>
+        </tbody>
+      </table>
+      <p data-i18n="perm.keypattern">Además de los comandos, la ACL debe restringir las <strong>claves</strong> accesibles con un patrón (ej. <code>~ruvic:*</code>). Sin esta restricción, el usuario puede leer y escribir cualquier clave del servidor, aunque los comandos estén limitados.</p>
+    </section>
+
+    <!-- ============ 5. CONFIGURACIÓN EN RUVIC ============ -->
+    <section>
+      <h2 id="configuracion-ruvic" data-i18n="section.configuracion_ruvic">Configuración en Ruvic</h2>
+      <p data-i18n="ruvic.intro">Entra a <strong>Settings → Conectores</strong>, busca la tarjeta <strong>Redis</strong> y pulsa <strong>Configurar</strong>. Diligencia el formulario con los valores que obtuviste en la sección anterior:</p>
+      <table>
+        <thead>
+          <tr>
+            <th data-i18n="table.campo">Campo del formulario</th>
+            <th data-i18n="table.valor">Valor</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td data-i18n="ruvic.f.host">Host</td>
+            <td data-i18n="ruvic.v.host">Hostname o IP del servidor (ej. <code>cache.empresa.com</code>)</td>
+          </tr>
+          <tr>
+            <td data-i18n="ruvic.f.puerto">Puerto</td>
+            <td><code>6379</code> <span data-i18n="ruvic.v.puerto">(salvo configuración distinta)</span></td>
+          </tr>
+          <tr>
+            <td data-i18n="ruvic.f.usuario">Usuario</td>
+            <td><code>ruvic_agent</code> <span data-i18n="ruvic.v.usuario">(déjalo vacío si tu servidor solo usa contraseña, sin ACL)</span></td>
+          </tr>
+          <tr>
+            <td data-i18n="ruvic.f.pass">Contraseña</td>
+            <td data-i18n="ruvic.v.pass">La contraseña del paso 2. Se guarda cifrada como secreto: la interfaz no volverá a mostrarla</td>
+          </tr>
+          <tr>
+            <td data-i18n="ruvic.f.db">Número de base de datos</td>
+            <td data-i18n="ruvic.v.db">Opcional; <code>0</code> por defecto (índice lógico de Redis, no confundir con una base de datos relacional)</td>
+          </tr>
+          <tr>
+            <td data-i18n="ruvic.f.timeout">Timeout de conexión</td>
+            <td data-i18n="ruvic.v.timeout">Opcional; <code>10</code> segundos por defecto</td>
+          </tr>
+        </tbody>
+      </table>
+      <p data-i18n="ruvic.save">Guarda y pulsa <span class="ruvic-button">Probar conexión</span> — la plataforma se conectará a tu servidor y confirmará que las credenciales y la red funcionan.</p>
+      <div class="screenshot-placeholder" data-i18n="ruvic.img">[ Captura: formulario del conector Redis en Settings → Conectores — reemplazar por assets/img/redis-form.png ]</div>
+    </section>
+
+    <!-- ============ 6. VERIFICACIÓN ============ -->
+    <section>
+      <h2 id="verificacion" data-i18n="section.verificacion">Verificación</h2>
+      <ol class="ruvic-steps">
+        <li>
+          <strong data-i18n="ver.p1.t">Test de conexión exitoso.</strong>
+          <p data-i18n="ver.p1.b">El botón <em>Probar conexión</em> debe responder: <em>“Conexión exitosa a tu-host:6379/db0”</em>. La tarjeta del conector cambia a estado <strong>Configurado</strong>.</p>
+        </li>
+        <li>
+          <strong data-i18n="ver.p2.t">Automatización mínima de prueba.</strong>
+          <p data-i18n="ver.p2.b">Abre una conversación nueva con el agente y pídele: <em>“Guarda la clave ruvic:prueba con el valor hola, que expire en 60 segundos, y luego léela para confirmar.”</em> El agente debe escribir la clave y leer de vuelta el mismo valor. Si lo hace, el conector quedó operativo de punta a punta.</p>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ============ 7. SOLUCIÓN DE PROBLEMAS ============ -->
+    <section>
+      <h2 id="solucion-problemas" data-i18n="section.solucion_problemas">Solución de problemas</h2>
+      <table>
+        <thead>
+          <tr>
+            <th data-i18n="table.sintoma">Mensaje / síntoma</th>
+            <th data-i18n="table.causa">Causa probable y solución</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td data-i18n="prob.s1">“Autenticación fallida: usuario o contraseña inválidos”</td>
+            <td data-i18n="prob.c1">Contraseña mal copiada, usuario inexistente, o el usuario ACL no persistió tras un reinicio (falta <code>ACL SAVE</code> o el <code>aclfile</code> no está configurado). Reintenta el paso 2 de la sección 3.</td>
+          </tr>
+          <tr>
+            <td data-i18n="prob.s2">“No se pudo conectar … (timeout)”</td>
+            <td data-i18n="prob.c2">La plataforma no alcanza el host/puerto. Revisa el paso 4 (firewall / security group / <code>bind</code> en <code>redis.conf</code>) y que el host no sea <code>localhost</code> (debe ser accesible desde Ruvic, no desde tu equipo).</td>
+          </tr>
+          <tr>
+            <td data-i18n="prob.s3">El agente puede leer pero “no tiene permiso” al escribir (o viceversa)</td>
+            <td data-i18n="prob.c3">La ACL del usuario no incluye el comando necesario. Revisa que el paso 2 de la sección 3 haya incluido +get +set +scan +ttl +ping completos.</td>
+          </tr>
+          <tr>
+            <td data-i18n="prob.s4">“La clave existe pero no es de tipo string”</td>
+            <td data-i18n="prob.c4">El conector solo lee/escribe claves de tipo string (WRONGTYPE). Si la clave es un hash, lista o set, no es compatible con este conector.</td>
+          </tr>
+          <tr>
+            <td data-i18n="prob.s5">El conector aparece “Sin configurar” tras guardar</td>
+            <td data-i18n="prob.c5">El campo Host quedó vacío (es el único obligatorio). Ábrelo de nuevo y complétalo.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ============ 8. FAQ Y SEGURIDAD ============ -->
+    <section>
+      <h2 id="faq-seguridad" data-i18n="section.faq_seguridad">Preguntas frecuentes y notas de seguridad</h2>
+
+      <h3 data-i18n="faq.q1">¿El agente puede leer o modificar cualquier clave del servidor?</h3>
+      <p data-i18n="faq.a1">Solo si tú lo permites en la ACL. Con el patrón ~ruvic:* del ejemplo, el agente queda limitado a las claves con ese prefijo. Sin ACL (servidores anteriores a Redis 6, o usuario default), no hay restricción por clave: cualquier credencial válida tiene acceso a todo el keyspace.</p>
+
+      <h3 data-i18n="faq.q2">¿Dónde queda guardada la contraseña?</h3>
+      <p data-i18n="faq.a2">Como secreto en el almacén de credenciales de la plataforma, asociado a tu usuario. La interfaz nunca vuelve a mostrarla; solo indica “definida”. Para cambiarla, escribe una nueva en el formulario; para conservarla al editar otros campos, deja el campo vacío.</p>
+
+      <h3 data-i18n="faq.q3">Rotación de credenciales</h3>
+      <p data-i18n="faq.a3">Recomendado cada 90 días o según tu política: cambia la contraseña con <code>ACL SETUSER ruvic_agent >NUEVA_CONTRASEÑA</code>, actualízala en el formulario del conector y pulsa <em>Probar conexión</em>.</p>
+
+      <h3 data-i18n="faq.q4">¿Qué hago si la contraseña se compromete?</h3>
+      <ol>
+        <li data-i18n="faq.a4.li1">Desactiva el usuario de inmediato (<code>ACL SETUSER ruvic_agent off</code>) o cambia su contraseña.</li>
+        <li data-i18n="faq.a4.li2">Revisa <code>ACL LOG</code> para ver intentos de acceso denegados recientes.</li>
+        <li data-i18n="faq.a4.li3">Actualiza la nueva contraseña en el formulario del conector.</li>
+      </ol>
+
+      <h3 data-i18n="faq.q5">¿Por qué no hay un comando para borrar claves?</h3>
+      <p data-i18n="faq.a5">Por diseño: limitar las operaciones a lectura y escritura (con TTL) reduce el riesgo de que el agente elimine datos por error. Si necesitas que una clave desaparezca, usa write_key con un ttl_seconds corto para que expire sola.</p>
+
+      <div class="callout callout-warning">
+        <span class="callout-title" data-i18n="faq.bp.title">Buenas prácticas</span>
+        <span data-i18n="faq.bp.body">Usa siempre un usuario ACL restringido a un patrón de claves específico; nunca compartas la contraseña maestra del servidor con el conector; separa el namespace de Ruvic (ej. prefijo ruvic:) del resto de tu aplicación; y evita compartir la contraseña por canales no seguros.</span>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const I18N = {
+      es: {
+        doc_title: "Conector Redis — Ruvic",
+        toc_title: "Contenido",
+        "toc.que_es": "¿Qué es y para qué sirve?",
+        "toc.prerrequisitos": "Prerrequisitos",
+        "toc.configuracion_fabricante": "Configuración en el fabricante",
+        "toc.permisos": "Permisos requeridos",
+        "toc.configuracion_ruvic": "Configuración en Ruvic",
+        "toc.verificacion": "Verificación",
+        "toc.solucion_problemas": "Solución de problemas",
+        "toc.faq_seguridad": "Preguntas frecuentes y notas de seguridad",
+        guide_title: "Redis",
+        "section.que_es": "¿Qué es y para qué sirve?",
+        "que_es.body": "El conector Redis permite que el agente de Ruvic lea y escriba claves en tu servidor Redis. A diferencia de los conectores de bases de datos del catálogo, este conector sí escribe. Una vez configurado, puedes pedirle al agente cosas como:",
+        "que_es.ej1": "“¿Cuál es el valor guardado en la clave sesion:usuario_42?”",
+        "que_es.ej2": "“Guarda esta configuración en caché con el nombre config:tema, que expire en 1 hora.”",
+        "que_es.ej3": "“Lista todas las claves que empiezan con carrito: para ver cuántos carritos activos hay.”",
+        "que_es.ops": "Operaciones soportadas:",
+        "table.operacion": "Operación",
+        "table.que_hace": "Qué hace",
+        "ops.read": "Lee el valor y el tiempo de expiración (TTL) de una clave",
+        "ops.write": "Escribe (o sobrescribe) una clave, con expiración opcional",
+        "ops.list_keys": "Lista las claves que cumplen un patrón, sin bloquear el servidor",
+        "que_es.callout.title": "Este conector escribe",
+        "que_es.callout.body": "redis.write sobrescribe el valor de la clave indicada. Se recomienda restringir el acceso del usuario dedicado a un patrón de claves específico (ver sección 3) en vez de dar acceso a todo el servidor.",
+        "section.prerrequisitos": "Prerrequisitos",
+        "prer.db": "Un servidor Redis 6.0 o superior (para poder usar ACL con restricción por patrón de claves; versiones anteriores solo soportan contraseña compartida).",
+        "prer.admin": "Acceso administrativo al servidor (para crear el usuario ACL), solo durante la configuración inicial.",
+        "prer.red": "Acceso de red desde la plataforma Ruvic al servidor Redis (host y puerto alcanzables; regla de firewall o lista de IPs permitidas si aplica).",
+        "prer.datos": "Los datos de conexión: host y puerto (por defecto 6379).",
+        "section.configuracion_fabricante": "Configuración en el fabricante",
+        "fab.intro": "Vas a crear un usuario ACL restringido a un patrón de claves para Ruvic. No uses la cuenta default ni compartas la contraseña maestra del servidor: un usuario dedicado limita el radio de acción del agente a solo las claves que le corresponden.",
+        "fab.p1.t": "Conéctate al servidor como administrador.",
+        "fab.p1.b": "Usa redis-cli con la contraseña maestra:",
+        "fab.p2.t": "Crea el usuario restringido para Ruvic.",
+        "fab.p2.b": "Elige una contraseña fuerte (mínimo 16 caracteres, generada aleatoriamente) y guárdala: la usarás en el formulario de Ruvic (campo Contraseña). El ejemplo restringe el acceso a claves con el prefijo ruvic: — ajusta el patrón a tu convención de nombres:",
+        "fab.p2.note.title": "Nota",
+        "fab.p2.note.body": "El patrón ~ruvic:* limita al usuario a claves que empiecen con \"ruvic:\". Los comandos +get +set +scan +ttl +ping son exactamente los que usa el conector; no se otorgan otros comandos.",
+        "fab.p3.t": "Persiste la configuración ACL.",
+        "fab.p3.b": "Si tu servidor usa un archivo users.acl, guarda los cambios para que sobrevivan a un reinicio:",
+        "fab.p3.alt": "Si no tienes un archivo ACL configurado (aclfile en redis.conf), el usuario se pierde al reiniciar Redis; considera configurarlo para uso en producción.",
+        "fab.p4.t": "Habilita el acceso de red desde Ruvic.",
+        "fab.p4.b": "Si tu Redis restringe conexiones por IP (habitual en producción), permite la IP de la plataforma Ruvic:",
+        "fab.p4.li1": "Servidor propio: regla de firewall del sistema operativo para el puerto 6379, y verifica que bind en redis.conf permita conexiones remotas (no solo 127.0.0.1).",
+        "fab.p4.li2": "Redis administrado (ElastiCache, Redis Cloud, etc.): agrega la IP en el security group o en la lista de redes autorizadas de la consola del proveedor.",
+        "fab.p4.img": "[ Captura: regla de firewall / security group con la IP de Ruvic — reemplazar por assets/img/redis-firewall.png ]",
+        "fab.p5.t": "Verifica el usuario desde fuera del servidor.",
+        "fab.p5.b": "Desde una máquina distinta al servidor (idealmente con salida de red similar a la de Ruvic):",
+        "fab.p5.result": "Si responde PONG, el fabricante quedó listo. Anota estos valores para la siguiente sección: host, puerto, usuario y contraseña.",
+        "section.permisos": "Permisos requeridos",
+        "perm.intro": "Principio de mínimo privilegio: el usuario de Ruvic solo necesita estos comandos, y solo sobre el patrón de claves que le corresponde. No otorgues +@all, +flushall, +flushdb ni acceso sin restricción de claves (~*).",
+        "table.permiso": "Comando",
+        "table.para_que": "Para qué sirve",
+        "perm.get.body": "Leer el valor de una clave (redis.read)",
+        "perm.set.body": "Escribir una clave, con o sin expiración (redis.write)",
+        "perm.scan.body": "Listar claves que cumplen un patrón sin bloquear el servidor (redis.list_keys)",
+        "perm.ttl.body": "Consultar el tiempo restante de expiración de una clave (parte de redis.read)",
+        "perm.ping.body": "Verificar la conexión (botón \"Probar conexión\")",
+        "perm.keypattern": "Además de los comandos, la ACL debe restringir las claves accesibles con un patrón (ej. ~ruvic:*). Sin esta restricción, el usuario puede leer y escribir cualquier clave del servidor, aunque los comandos estén limitados.",
+        "section.configuracion_ruvic": "Configuración en Ruvic",
+        "ruvic.intro": "Entra a Settings → Conectores, busca la tarjeta Redis y pulsa Configurar. Diligencia el formulario con los valores que obtuviste en la sección anterior:",
+        "table.campo": "Campo del formulario",
+        "table.valor": "Valor",
+        "ruvic.f.host": "Host",
+        "ruvic.v.host": "Hostname o IP del servidor (ej. cache.empresa.com)",
+        "ruvic.f.puerto": "Puerto",
+        "ruvic.v.puerto": "(salvo configuración distinta)",
+        "ruvic.f.usuario": "Usuario",
+        "ruvic.v.usuario": "(déjalo vacío si tu servidor solo usa contraseña, sin ACL)",
+        "ruvic.f.pass": "Contraseña",
+        "ruvic.v.pass": "La contraseña del paso 2. Se guarda cifrada como secreto: la interfaz no volverá a mostrarla",
+        "ruvic.f.db": "Número de base de datos",
+        "ruvic.v.db": "Opcional; 0 por defecto (índice lógico de Redis, no confundir con una base de datos relacional)",
+        "ruvic.f.timeout": "Timeout de conexión",
+        "ruvic.v.timeout": "Opcional; 10 segundos por defecto",
+        "ruvic.save": "Guarda y pulsa Probar conexión — la plataforma se conectará a tu servidor y confirmará que las credenciales y la red funcionan.",
+        "ruvic.img": "[ Captura: formulario del conector Redis en Settings → Conectores — reemplazar por assets/img/redis-form.png ]",
+        "section.verificacion": "Verificación",
+        "ver.p1.t": "Test de conexión exitoso.",
+        "ver.p1.b": "El botón Probar conexión debe responder: “Conexión exitosa a tu-host:6379/db0”. La tarjeta del conector cambia a estado Configurado.",
+        "ver.p2.t": "Automatización mínima de prueba.",
+        "ver.p2.b": "Abre una conversación nueva con el agente y pídele: “Guarda la clave ruvic:prueba con el valor hola, que expire en 60 segundos, y luego léela para confirmar.” El agente debe escribir la clave y leer de vuelta el mismo valor. Si lo hace, el conector quedó operativo de punta a punta.",
+        "section.solucion_problemas": "Solución de problemas",
+        "table.sintoma": "Mensaje / síntoma",
+        "table.causa": "Causa probable y solución",
+        "prob.s1": "“Autenticación fallida: usuario o contraseña inválidos”",
+        "prob.c1": "Contraseña mal copiada, usuario inexistente, o el usuario ACL no persistió tras un reinicio (falta ACL SAVE o el aclfile no está configurado). Reintenta el paso 2 de la sección 3.",
+        "prob.s2": "“No se pudo conectar … (timeout)”",
+        "prob.c2": "La plataforma no alcanza el host/puerto. Revisa el paso 4 (firewall / security group / bind en redis.conf) y que el host no sea localhost (debe ser accesible desde Ruvic, no desde tu equipo).",
+        "prob.s3": "El agente puede leer pero “no tiene permiso” al escribir (o viceversa)",
+        "prob.c3": "La ACL del usuario no incluye el comando necesario. Revisa que el paso 2 de la sección 3 haya incluido +get +set +scan +ttl +ping completos.",
+        "prob.s4": "“La clave existe pero no es de tipo string”",
+        "prob.c4": "El conector solo lee/escribe claves de tipo string (WRONGTYPE). Si la clave es un hash, lista o set, no es compatible con este conector.",
+        "prob.s5": "El conector aparece “Sin configurar” tras guardar",
+        "prob.c5": "El campo Host quedó vacío (es el único obligatorio). Ábrelo de nuevo y complétalo.",
+        "section.faq_seguridad": "Preguntas frecuentes y notas de seguridad",
+        "faq.q1": "¿El agente puede leer o modificar cualquier clave del servidor?",
+        "faq.a1": "Solo si tú lo permites en la ACL. Con el patrón ~ruvic:* del ejemplo, el agente queda limitado a las claves con ese prefijo. Sin ACL (servidores anteriores a Redis 6, o usuario default), no hay restricción por clave: cualquier credencial válida tiene acceso a todo el keyspace.",
+        "faq.q2": "¿Dónde queda guardada la contraseña?",
+        "faq.a2": "Como secreto en el almacén de credenciales de la plataforma, asociado a tu usuario. La interfaz nunca vuelve a mostrarla; solo indica “definida”. Para cambiarla, escribe una nueva en el formulario; para conservarla al editar otros campos, deja el campo vacío.",
+        "faq.q3": "Rotación de credenciales",
+        "faq.a3": "Recomendado cada 90 días o según tu política: cambia la contraseña con ACL SETUSER ruvic_agent >NUEVA_CONTRASEÑA, actualízala en el formulario del conector y pulsa Probar conexión.",
+        "faq.q4": "¿Qué hago si la contraseña se compromete?",
+        "faq.a4.li1": "Desactiva el usuario de inmediato (ACL SETUSER ruvic_agent off) o cambia su contraseña.",
+        "faq.a4.li2": "Revisa ACL LOG para ver intentos de acceso denegados recientes.",
+        "faq.a4.li3": "Actualiza la nueva contraseña en el formulario del conector.",
+        "faq.q5": "¿Por qué no hay un comando para borrar claves?",
+        "faq.a5": "Por diseño: limitar las operaciones a lectura y escritura (con TTL) reduce el riesgo de que el agente elimine datos por error. Si necesitas que una clave desaparezca, usa write_key con un ttl_seconds corto para que expire sola.",
+        "faq.bp.title": "Buenas prácticas",
+        "faq.bp.body": "Usa siempre un usuario ACL restringido a un patrón de claves específico; nunca compartas la contraseña maestra del servidor con el conector; separa el namespace de Ruvic (ej. prefijo ruvic:) del resto de tu aplicación; y evita compartir la contraseña por canales no seguros.",
+      },
+      en: {
+        doc_title: "Redis Connector — Ruvic",
+        toc_title: "Contents",
+        "toc.que_es": "What it is and what it’s for",
+        "toc.prerrequisitos": "Prerequisites",
+        "toc.configuracion_fabricante": "Vendor / provider setup",
+        "toc.permisos": "Required permissions",
+        "toc.configuracion_ruvic": "Configuration in Ruvic",
+        "toc.verificacion": "Verification",
+        "toc.solucion_problemas": "Troubleshooting",
+        "toc.faq_seguridad": "FAQ and security notes",
+        guide_title: "Redis",
+        "section.que_es": "What it is and what it’s for",
+        "que_es.body": "The Redis connector lets the Ruvic agent read and write keys on your Redis server. Unlike the database connectors in the catalog, this connector does write. Once configured, you can ask the agent things like:",
+        "que_es.ej1": "“What's the value stored in the key sesion:usuario_42?”",
+        "que_es.ej2": "“Cache this config under the name config:tema, expiring in 1 hour.”",
+        "que_es.ej3": "“List all keys starting with carrito: to see how many active carts there are.”",
+        "que_es.ops": "Supported operations:",
+        "table.operacion": "Operation",
+        "table.que_hace": "What it does",
+        "ops.read": "Reads a key's value and time-to-live (TTL)",
+        "ops.write": "Writes (or overwrites) a key, with optional expiration",
+        "ops.list_keys": "Lists keys matching a pattern, without blocking the server",
+        "que_es.callout.title": "This connector writes",
+        "que_es.callout.body": "redis.write overwrites the value of the given key. It's recommended to restrict the dedicated user to a specific key pattern (see section 3) instead of granting access to the whole server.",
+        "section.prerrequisitos": "Prerequisites",
+        "prer.db": "A Redis 6.0+ server (needed to use ACLs with key-pattern restriction; earlier versions only support a shared password).",
+        "prer.admin": "Administrative access to the server (to create the ACL user), only during initial setup.",
+        "prer.red": "Network access from the Ruvic platform to the Redis server (reachable host and port; firewall rule or IP allow-list if applicable).",
+        "prer.datos": "The connection details: host and port (default 6379).",
+        "section.configuracion_fabricante": "Vendor / provider setup",
+        "fab.intro": "You will create an ACL user restricted to a key pattern for Ruvic. Do not reuse the default account or share the server's master password: a dedicated user limits the agent's blast radius to only the keys it needs.",
+        "fab.p1.t": "Connect to the server as an administrator.",
+        "fab.p1.b": "Use redis-cli with the master password:",
+        "fab.p2.t": "Create the restricted user for Ruvic.",
+        "fab.p2.b": "Choose a strong password (16+ random characters) and save it: you will paste it into the Ruvic form (Password field). The example restricts access to keys with the ruvic: prefix — adjust the pattern to your naming convention:",
+        "fab.p2.note.title": "Note",
+        "fab.p2.note.body": "The pattern ~ruvic:* limits the user to keys starting with \"ruvic:\". The commands +get +set +scan +ttl +ping are exactly what the connector uses; no other commands are granted.",
+        "fab.p3.t": "Persist the ACL configuration.",
+        "fab.p3.b": "If your server uses a users.acl file, save the changes so they survive a restart:",
+        "fab.p3.alt": "If you don't have an ACL file configured (aclfile in redis.conf), the user is lost on Redis restart; consider configuring it for production use.",
+        "fab.p4.t": "Enable network access from Ruvic.",
+        "fab.p4.b": "If your Redis restricts connections by IP (common in production), allow the Ruvic platform IP:",
+        "fab.p4.li1": "Self-hosted: OS firewall rule for port 6379, and make sure bind in redis.conf allows remote connections (not just 127.0.0.1).",
+        "fab.p4.li2": "Managed Redis (ElastiCache, Redis Cloud, etc.): add the IP to the security group or authorized networks list in the provider console.",
+        "fab.p4.img": "[ Screenshot: firewall rule / security group with the Ruvic IP — replace with assets/img/redis-firewall.png ]",
+        "fab.p5.t": "Verify the user from outside the server.",
+        "fab.p5.b": "From a machine other than the server (ideally with network egress similar to Ruvic's):",
+        "fab.p5.result": "If it returns PONG, the vendor side is ready. Write down these values for the next section: host, port, user and password.",
+        "section.permisos": "Required permissions",
+        "perm.intro": "Least-privilege principle: the Ruvic user only needs these commands, and only over its assigned key pattern. Do not grant +@all, +flushall, +flushdb, or unrestricted key access (~*).",
+        "table.permiso": "Command",
+        "table.para_que": "Why it's needed",
+        "perm.get.body": "Read a key's value (redis.read)",
+        "perm.set.body": "Write a key, with or without expiration (redis.write)",
+        "perm.scan.body": "List keys matching a pattern without blocking the server (redis.list_keys)",
+        "perm.ttl.body": "Check a key's remaining time-to-live (part of redis.read)",
+        "perm.ping.body": "Verify the connection (\"Test connection\" button)",
+        "perm.keypattern": "Besides commands, the ACL must also restrict which keys are accessible with a pattern (e.g. ~ruvic:*). Without this restriction, the user can read and write any key on the server, even with limited commands.",
+        "section.configuracion_ruvic": "Configuration in Ruvic",
+        "ruvic.intro": "Go to Settings → Connectors, find the Redis card and click Configure. Fill in the form with the values from the previous section:",
+        "table.campo": "Form field",
+        "table.valor": "Value",
+        "ruvic.f.host": "Host",
+        "ruvic.v.host": "Server hostname or IP (e.g. cache.company.com)",
+        "ruvic.f.puerto": "Port",
+        "ruvic.v.puerto": "(unless configured otherwise)",
+        "ruvic.f.usuario": "Username",
+        "ruvic.v.usuario": "(leave empty if your server only uses a password, no ACL)",
+        "ruvic.f.pass": "Password",
+        "ruvic.v.pass": "The password from step 2. Stored as a secret: the UI will never display it again",
+        "ruvic.f.db": "Database number",
+        "ruvic.v.db": "Optional; defaults to 0 (Redis logical database index, not a relational database)",
+        "ruvic.f.timeout": "Connection timeout",
+        "ruvic.v.timeout": "Optional; defaults to 10 seconds",
+        "ruvic.save": "Save and click Test connection — the platform will connect to your server and confirm credentials and networking work.",
+        "ruvic.img": "[ Screenshot: Redis connector form in Settings → Connectors — replace with assets/img/redis-form.png ]",
+        "section.verificacion": "Verification",
+        "ver.p1.t": "Successful connection test.",
+        "ver.p1.b": "The Test connection button should return: “Successful connection to your-host:6379/db0”. The connector card switches to Configured.",
+        "ver.p2.t": "Minimal test automation.",
+        "ver.p2.b": "Open a new conversation with the agent and ask: “Save the key ruvic:prueba with the value hola, expiring in 60 seconds, then read it back to confirm.” The agent should write the key and read the same value back. If it does, the connector is fully operational.",
+        "section.solucion_problemas": "Troubleshooting",
+        "table.sintoma": "Message / symptom",
+        "table.causa": "Likely cause and fix",
+        "prob.s1": "“Authentication failed: invalid user or password”",
+        "prob.c1": "Mistyped password, missing user, or the ACL user didn't persist after a restart (missing ACL SAVE or aclfile not configured). Redo step 2 of section 3.",
+        "prob.s2": "“Could not connect … (timeout)”",
+        "prob.c2": "The platform cannot reach the host/port. Review step 4 (firewall / security group / bind in redis.conf) and make sure the host is not localhost (it must be reachable from Ruvic, not from your laptop).",
+        "prob.s3": "The agent can read but “has no permission” to write (or the other way around)",
+        "prob.c3": "The user's ACL is missing a command. Check that step 2 of section 3 included the full +get +set +scan +ttl +ping set.",
+        "prob.s4": "“The key exists but is not a string type”",
+        "prob.c4": "The connector only reads/writes string-type keys (WRONGTYPE). If the key is a hash, list or set, it's not compatible with this connector.",
+        "prob.s5": "Connector shows “Not configured” after saving",
+        "prob.c5": "The Host field was left empty (it's the only required one). Open it again and fill it in.",
+        "section.faq_seguridad": "FAQ and security notes",
+        "faq.q1": "Can the agent read or modify any key on the server?",
+        "faq.a1": "Only if you allow it in the ACL. With the example ~ruvic:* pattern, the agent is limited to keys with that prefix. Without ACLs (pre-Redis 6 servers, or the default user), there is no per-key restriction: any valid credential has access to the whole keyspace.",
+        "faq.q2": "Where is the password stored?",
+        "faq.a2": "As a secret in the platform's credential store, tied to your user. The UI never displays it again; it only shows “set”. To change it, type a new one in the form; to keep it while editing other fields, leave the field empty.",
+        "faq.q3": "Credential rotation",
+        "faq.a3": "Recommended every 90 days or per your policy: change the password with ACL SETUSER ruvic_agent >NEW_PASSWORD, update it in the connector form and click Test connection.",
+        "faq.q4": "What if the password is compromised?",
+        "faq.a4.li1": "Disable the user immediately (ACL SETUSER ruvic_agent off) or change its password.",
+        "faq.a4.li2": "Check ACL LOG for recent denied access attempts.",
+        "faq.a4.li3": "Update the new password in the connector form.",
+        "faq.q5": "Why isn't there a command to delete keys?",
+        "faq.a5": "By design: limiting operations to read and write (with TTL) reduces the risk of the agent deleting data by mistake. If you need a key to disappear, use write_key with a short ttl_seconds so it expires on its own.",
+        "faq.bp.title": "Best practices",
+        "faq.bp.body": "Always use an ACL user restricted to a specific key pattern; never share the server's master password with the connector; keep Ruvic's namespace (e.g. a ruvic: prefix) separate from the rest of your application; and never share the password over insecure channels.",
+      },
+    };
+    /* El portal aplica el idioma del usuario (localStorage ruvic-docs-lang)
+       y actualiza [data-i18n], [data-i18n-placeholder] y [data-i18n-alt]. */
+  </script>
+</body>
+</html>

@@ -1,0 +1,77 @@
+{
+  "id": "redis",
+  "name": "Redis",
+  "name_en": "Redis",
+  "version": "1.0.0",
+  "description": "Lectura y escritura de claves en Redis: leer clave, escribir clave con TTL y listar claves por patrón",
+  "description_en": "Read and write Redis keys: read a key, write a key with TTL, and list keys by pattern",
+  "icon": "icon.svg",
+  "category": "database",
+  "category_en": "database",
+  "keywords": ["redis", "cache", "caché", "key-value", "clave-valor", "ttl", "database", "base de datos"],
+  "library": {
+    "package": "ruvic-redis-connector",
+    "install": "pip install git+https://github.com/Dgirto/Redis.git#subdirectory=lib",
+    "import_name": "ruvic_redis_connector"
+  },
+  "auth_modes": [
+    {
+      "id": "user_password",
+      "label": "Host y contraseña",
+      "fields": [
+        {
+          "key": "host",
+          "label": "Host",
+          "type": "text",
+          "required": true,
+          "placeholder": "cache.empresa.com",
+          "help_text": "Hostname o IP del servidor Redis"
+        },
+        {
+          "key": "port",
+          "label": "Puerto",
+          "type": "number",
+          "required": true,
+          "default": "6379"
+        },
+        {
+          "key": "username",
+          "label": "Usuario",
+          "type": "text",
+          "required": false,
+          "help_text": "Solo si usas ACL de Redis 6+ con un usuario distinto de 'default'. Déjalo vacío si tu servidor solo usa contraseña."
+        },
+        {
+          "key": "password",
+          "label": "Contraseña",
+          "type": "password",
+          "secret": true,
+          "required": false,
+          "help_text": "Requerida si el servidor tiene requirepass o ACL configurado (muy recomendado en producción)"
+        },
+        {
+          "key": "db",
+          "label": "Número de base de datos",
+          "type": "number",
+          "required": false,
+          "default": "0",
+          "help_text": "Índice de la base de datos lógica de Redis (0-15 por defecto)"
+        },
+        {
+          "key": "connect_timeout",
+          "label": "Timeout de conexión (segundos)",
+          "type": "number",
+          "required": false,
+          "default": "10"
+        }
+      ]
+    }
+  ],
+  "env_prefix": "RUVIC_REDIS_",
+  "operations": ["redis.read", "redis.write", "redis.list_keys"],
+  "test_connection": true,
+  "docs": {
+    "skill": "SKILL.md",
+    "permissions_note": "A diferencia de los conectores de bases de datos relacionales del catálogo, este conector SÍ escribe (SET). Se recomienda restringir el acceso con un usuario ACL de Redis 6+ limitado a un patrón de claves (ej. ~ruvic:*) en vez de usar la cuenta 'default' con acceso a todo el keyspace."
+  }
+}
