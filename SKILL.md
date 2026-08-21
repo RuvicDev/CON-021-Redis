@@ -93,6 +93,29 @@ except RedisDataError as e:
     print(f"Error de datos: {e}")  # ej. la clave existe pero no es string
 ```
 
+## Comportamiento conversacional
+
+### Cuándo pedir aclaración (y cuándo NO)
+
+Redis no tiene agregaciones tipo `GROUP BY` — cada operación actúa sobre una
+clave específica, así que la ambigüedad aquí es casi siempre sobre **cuál
+clave**, no sobre cálculos. Pide aclaración solo cuando el usuario se refiere
+a "la clave"/"la sesión"/etc. sin dar el nombre ni un patrón que la acote, y
+`list_keys` devuelve más de una coincidencia razonable.
+
+| Situación | ¿Preguntar? |
+|---|---|
+| El usuario da la clave exacta o un patrón claro (ej. "sesion:123", "las claves que empiecen con config:") | No — resuélvelo directo con `read_key`/`list_keys` |
+| El usuario dice "la sesión del usuario" sin más contexto y `list_keys("sesion:*")` devuelve varias | Sí — pregunta cuál, mostrando las claves encontradas |
+| El usuario pide sobrescribir una clave que ya tiene valor | No es ambigüedad, pero **sí conviene mostrar el valor actual antes de escribir** — es la única acción destructiva de este conector, y el usuario debería confirmarla a sabiendas de qué va a perder |
+
+### Sugerencias de seguimiento
+
+Ofrece una sugerencia de seguimiento solo si aporta algo no obvio. Ejemplo: si
+leíste una clave con TTL bajo, puede tener sentido mencionar cuánto le queda
+de vida; si el usuario ya tiene toda la información que pidió, no agregues
+nada más.
+
 ## Buenas prácticas al generar código
 
 1. Lee credenciales SOLO de las variables `RUVIC_REDIS_*` (el constructor de `RedisClient` ya lo hace).
