@@ -45,6 +45,8 @@ _MAX_LIST_LIMIT = 10_000
 
 
 def _validate_key(key: str) -> str:
+    if key is not None and not isinstance(key, str):
+        raise RedisDataError(f"key debe ser un string, no {type(key).__name__}.")
     key = (key or "").strip()
     if not key:
         raise RedisDataError("key no puede estar vacía.")
@@ -160,6 +162,14 @@ class RedisClient:
             raise RedisNetworkError(f"No se pudo leer la clave: {exc}") from exc
         except ResponseError as exc:
             raise _wrap_response_error(exc) from exc
+        except UnicodeDecodeError as exc:
+            # decode_responses=True espera texto; una clave con datos
+            # binarios (comunes en instancias Redis compartidas con
+            # otras apps) rompe la decodificación en vez de fallar limpio.
+            raise RedisDataError(
+                f"La clave {key!r} contiene datos binarios que no son texto "
+                "UTF-8 válido. Este conector solo lee valores de texto."
+            ) from exc
         if ttl is not None and ttl < 0:
             ttl = None  # -1: sin expiración configurada
         self._logger.info("Leída clave %r (exists=%s)", key, value is not None)
