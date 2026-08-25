@@ -25,7 +25,7 @@ class RedisConfig:
     connect_timeout: int = 10
 
     @classmethod
-    def from_env(cls) -> "RedisConfig":
+    def from_env(cls) -> RedisConfig:
         """Construye la configuración desde las variables RUVIC_REDIS_*.
 
         Raises:

@@ -22,8 +22,12 @@ from typing import Any
 import redis
 from redis.exceptions import (
     AuthenticationError,
-    ConnectionError as RedisConnectionError,
     ResponseError,
+)
+from redis.exceptions import (
+    ConnectionError as RedisConnectionError,
+)
+from redis.exceptions import (
     TimeoutError as RedisTimeoutError,
 )
 
@@ -190,6 +194,11 @@ class RedisClient:
             {'key': 'sesion:123', 'ttl_seconds': 3600}
         """
         key = _validate_key(key)
+        if value is None:
+            raise RedisDataError(
+                "value no puede ser None (se guardaría el texto literal "
+                "'None', probablemente no es lo que se busca)."
+            )
         if ttl_seconds is not None and ttl_seconds <= 0:
             raise RedisDataError("ttl_seconds debe ser un entero positivo.")
         client = self._get_client()
@@ -225,7 +234,12 @@ class RedisClient:
             ['sesion:123', 'sesion:456']
         """
         pattern = (pattern or "*").strip() or "*"
-        limit = max(1, min(int(limit), _MAX_LIST_LIMIT))
+        try:
+            limit = max(1, min(int(limit), _MAX_LIST_LIMIT))
+        except (TypeError, ValueError) as exc:
+            raise RedisDataError(
+                f"limit inválido: {limit!r}. Debe ser un número entero."
+            ) from exc
         client = self._get_client()
         keys: list[str] = []
         try:
