@@ -209,8 +209,13 @@ class RedisClient:
                 "value no puede ser None (se guardaría el texto literal "
                 "'None', probablemente no es lo que se busca)."
             )
-        if ttl_seconds is not None and ttl_seconds <= 0:
-            raise RedisDataError("ttl_seconds debe ser un entero positivo.")
+        if ttl_seconds is not None:
+            if isinstance(ttl_seconds, bool) or not isinstance(ttl_seconds, int):
+                raise RedisDataError(
+                    f"ttl_seconds debe ser un entero, no {type(ttl_seconds).__name__}."
+                )
+            if ttl_seconds <= 0:
+                raise RedisDataError("ttl_seconds debe ser un entero positivo.")
         client = self._get_client()
         try:
             client.set(key, str(value), ex=ttl_seconds)
